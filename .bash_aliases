@@ -1,0 +1,6 @@
+alias prod-console='ENV=production make pull-image rails-c'
+alias prod-db-console='ENV=production make rails-db'
+alias staging-console='ENV=staging make pull-image rails-c'
+alias staging-db-console='ENV=staging make rails-db'
+alias gm='git checkout master'
+alias gp='git pull'
