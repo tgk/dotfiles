@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -e
+
+TEMPLATE=/tmp/hubtemplate
+
+STORY=`git rev-parse --abbrev-ref HEAD | sed 's/.*sc-\([0-9]*\)\/.*/\1/'`
+
+if [ "$(git branch | grep -E '^\*?\s*main$')" ]; then
+  git log --pretty=tformat:"%s%n" main..HEAD > $TEMPLATE
+else
+  echo > $TEMPLATE
+  echo >> $TEMPLATE
+fi
+
+echo "[Story](https://app.shortcut.com/gomore/story/${STORY})" >> $TEMPLATE
+
+hub pull-request -e -F $TEMPLATE
