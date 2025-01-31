@@ -1,0 +1,99 @@
+#!/usr/share/rvm/rubies/ruby-3.3.0/bin/ruby
+
+require 'json'
+
+def shortcut_api_token
+  open(File.expand_path("~/.shortcut-api-token")).read
+rescue
+  puts "Unable to find shortcut API token in ~/.shortcut-api-token"
+  puts "Generate a token here: https://app.shortcut.com/gomore/settings/account/api-tokens"
+  exit 1
+end
+
+def get_story_json(story_id)
+  json = `curl -X GET \
+    -s \
+    -H "Content-Type: application/json" \
+    -H "Shortcut-Token: #{shortcut_api_token}" \
+    -L "https://api.app.shortcut.com/api/v3/stories/#{story_id}"`
+  JSON.parse(json)
+end
+
+def branch_name(story_id, story_name)
+  story_part = story_name.gsub(/[^a-zA-Z0-9 -]/, '')[0..40].split(/ /).join("-").downcase
+  "tgk/sc-#{story_id}/#{story_part}"
+end
+
+def working_tree_clean?
+  system("git diff --exit-code > /dev/null") &&
+    system("git diff --cached --exit-code > /dev/null")
+end
+
+if !working_tree_clean?
+  puts "Working tree not clean"
+  exit 1
+end
+
+def start_story(story_id)
+  json = get_story_json(story_id)
+
+  branch = branch_name(story_id, json["name"])
+  `git checkout main`
+  `git pull`
+  `git checkout -b #{branch}`
+  `git push -u`
+  puts "Done. Created and pushed new branch #{branch}"
+end
+
+def switch_to_story_or_create(story_id)
+  json = get_story_json(story_id)
+  branch_count = json["branches"].size
+  if branch_count == 0
+    start_story(story_id)
+    return
+  elsif branch_count != 1
+    puts "Unexpected number of branches on story: #{branch_count}"
+    exit 1
+  end
+
+  branch = json["branches"][0]["name"]
+  `git checkout main`
+  `git pull`
+  `git fetch`
+  `git checkout #{branch}`
+  puts "Done."
+end
+
+def current_stories
+  tgk_owner_id = "57e0ed33-a1f5-4b0a-b992-652404d96154"
+  in_development_workflow_state_id = 500000015
+
+  json = `curl -X GET \
+    -s \
+    -H "Content-Type: application/json" \
+    -H "Shortcut-Token: #{shortcut_api_token}" \
+    -L "https://api.app.shortcut.com/api/v3/search/stories?query=is:started"`
+
+  JSON.parse(json)["data"].filter do |story|
+    story["owner_ids"].include?(tgk_owner_id) && story["workflow_state_id"] == in_development_workflow_state_id
+  end
+end
+
+stories = current_stories
+
+if stories.count == 1
+  puts
+  puts stories[0]["name"]
+  puts
+
+  switch_to_story_or_create(stories[0]["id"])
+elsif stories.count > 1
+  puts "Multiple stories found. Please pick one:"
+  stories.each_with_index do |story, index|
+    puts " #{index}: #{story['name']}"
+  end
+  index = gets.to_i
+  switch_to_story_or_create(stories[index]["id"])
+else
+  puts "No started stories found"
+end
